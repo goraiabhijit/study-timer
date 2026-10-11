@@ -1,0 +1,628 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#000000">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<title>Study timer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Doto:wght@400;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  box-sizing:border-box;
+  color-scheme:dark;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+  padding-left:env(safe-area-inset-left,0px);
+  padding-right:env(safe-area-inset-right,0px);
+  --bg:#000;--fg:#f2f2f2;--muted:#9a9a9a;--line:#2a2a2a;--off:#2d2d2d;--accent:#ff3b30;
+  --font:'Space Mono',ui-monospace,monospace;--digits:'Doto','Space Mono',monospace;
+  background:var(--bg);
+}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*,*::before,*::after{box-sizing:border-box;margin:0}
+html,body{height:100%}
+body{background:var(--bg);color:var(--fg);font-family:var(--font);-webkit-tap-highlight-color:transparent;overflow:hidden}
+button{font:inherit;color:inherit}
+button:focus-visible,input:focus-visible{outline:3px solid #3b82f6;outline-offset:3px}
+
+.app{position:relative;height:100%;max-width:430px;margin:0 auto}
+.screen{position:relative;height:100%;display:flex;flex-direction:column;justify-content:space-between;padding:22px max(28px,env(safe-area-inset-right,0px)) 26px max(28px,env(safe-area-inset-left,0px));user-select:none;-webkit-user-select:none;touch-action:manipulation}
+.running.screen{cursor:pointer}
+
+/* header + tags */
+.head{min-width:0;transition:opacity .45s}
+.top,.tags{transition:opacity .45s}
+.top{display:flex;justify-content:space-between;align-items:flex-start}
+.date{display:block;font-size:15px;font-weight:700;letter-spacing:.02em}
+.state{display:flex;align-items:center;gap:8px;margin-top:6px;font-size:12px;color:var(--muted)}
+.state::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--off);box-shadow:0 0 0 1px var(--muted) inset}
+.state.done::before{background:var(--accent);box-shadow:none}
+.tags{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0 0;max-height:calc(50vh - 160px);overflow-y:auto;scrollbar-width:none}
+.tags::-webkit-scrollbar{display:none}
+.chip{flex:none;max-width:100%;min-height:44px;padding:0 18px;display:flex;align-items:center;gap:8px;border:1px solid #3a3a3a;border-radius:999px;background:none;font-family:var(--font);font-size:12px;letter-spacing:.06em;cursor:pointer;white-space:nowrap}
+.chip[aria-pressed="true"]{background:var(--fg);border-color:var(--fg);color:#000}
+.chip.done{border-color:#3fb26e}
+.chip.done[aria-pressed="true"]{box-shadow:inset 0 0 0 1px #3fb26e}
+.chip.add{padding:0;width:44px;justify-content:center}
+.chip.add .i{width:18px;height:18px}
+
+/* orbit */
+.hero{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:grid;place-items:center;pointer-events:none}
+.stage{pointer-events:auto;position:relative;--size:min(264px,66vw);width:var(--size);aspect-ratio:1;transition:transform .6s cubic-bezier(.2,.7,.2,1);--r:calc(var(--size) * .447)}
+.dots{position:absolute;inset:0;--dot:max(4px,calc(var(--size) * .0227))}
+.dots span{position:absolute;left:50%;top:50%;width:var(--dot);height:var(--dot);margin:calc(var(--dot) / -2);border-radius:50%;background:var(--off);transition:background .3s}
+.dots span.on{background:var(--fg)}
+.dots span.cur{background:var(--accent);box-shadow:0 0 10px var(--accent)}
+
+/* hour dial: 12h ticks around the dot ring, one white hand = the current time.
+   Drawn in a 400-unit box where the dot ring has radius 118 (so 1 unit = size * .003788). */
+.dial{position:absolute;left:50%;top:50%;width:calc(var(--size) * 1.515);height:calc(var(--size) * 1.515);transform:translate(-50%,-50%);overflow:visible;pointer-events:none}
+.dial .tick{stroke:#3a3a3a;stroke-width:1.5;stroke-linecap:round}
+.dial .tick.maj{stroke:#6a6a6a;stroke-width:2}
+.dial text{font-family:var(--digits);font-weight:400;font-size:13px;fill:var(--muted);text-anchor:middle;dominant-baseline:central}
+.dial .hand{stroke:var(--fg);stroke-width:4;stroke-linecap:round}
+.readout{position:absolute;inset:0;display:grid;place-content:center;text-align:center}
+.label,.sub{font-size:max(9px,calc(var(--size) * .042));letter-spacing:.12em;text-transform:uppercase;color:var(--muted);transition:opacity .45s}
+.label{margin:0 auto calc(var(--size) * .038);max-width:calc(var(--size) * .64);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sub{margin-top:calc(var(--size) * .038)}
+.dtime{margin-left:8px;font-weight:400;color:var(--muted)}
+.time{font-family:var(--digits);font-weight:700;font-size:calc(var(--size) * .2);letter-spacing:.02em;font-variant-numeric:tabular-nums;line-height:1;white-space:nowrap}
+
+/* controls */
+.controls{display:flex;align-items:center;justify-content:space-between;gap:12px;transition:opacity .45s}
+.side{display:flex;align-items:center;justify-content:center;gap:8px;min-height:48px;padding:0 18px;border:1px solid #3a3a3a;border-radius:999px;background:none;font-family:var(--font);font-size:11px;letter-spacing:.1em;text-transform:uppercase;cursor:pointer}
+.main{width:78px;height:78px;border-radius:50%;border:0;background:var(--fg);color:#000;display:grid;place-items:center;cursor:pointer}
+.main:disabled{opacity:.25;cursor:default}
+.i{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.main .i{width:28px;height:28px}
+
+/* focus mode: only the time and the dot ring stay visible */
+.running .head,
+.running .top,
+.running .tags,
+.running .controls,
+.running .label,
+.running .sub{opacity:0;pointer-events:none}
+.running .controls .main{pointer-events:none}
+
+/* edit sheet */
+.overlay{position:absolute;inset:0;display:flex;align-items:flex-end;background:rgba(0,0,0,.72)}
+.overlay[hidden]{display:none}
+.sheet{width:100%;max-height:100%;overflow-y:auto;padding:24px 22px calc(24px + env(safe-area-inset-bottom,0px));background:#0b0b0b;border:1px solid var(--line);border-bottom:0;border-radius:28px 28px 0 0;display:flex;flex-direction:column;gap:18px}
+.sheet h2{font-size:12px;font-weight:400;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.nameinput{width:100%;min-height:52px;padding:0 16px;background:#000;border:1px solid #3a3a3a;border-radius:16px;color:var(--fg);font-family:var(--font);font-size:16px;user-select:text;-webkit-user-select:text}
+.stepper{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.round{width:60px;height:60px;border-radius:50%;border:1px solid #3a3a3a;background:none;display:grid;place-items:center;cursor:pointer}
+.round .i{width:24px;height:24px}
+.goalval{font-family:var(--digits);font-weight:700;font-size:54px;line-height:1;font-variant-numeric:tabular-nums}
+.presets{display:flex;gap:6px}
+.presets button{flex:1;min-height:48px;padding:0;border:1px solid var(--line);border-radius:999px;background:none;font-family:var(--font);font-size:12px;cursor:pointer}
+.presets button[aria-pressed="true"]{background:var(--fg);color:#000;border-color:var(--fg)}
+.done-btn{min-height:56px;border:0;border-radius:999px;background:var(--fg);color:#000;font-family:var(--font);font-size:13px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;cursor:pointer}
+.danger{min-height:44px;background:none;border:0;color:#ff6b61;font-family:var(--font);font-size:12px;letter-spacing:.06em;cursor:pointer}
+.danger[hidden]{display:none}
+
+/* phone in landscape: balanced 3-column layout with timer perfectly centered */
+@media (orientation: landscape){
+  :root{
+    --side-w:clamp(120px, 18vw, 150px);
+  }
+  .app{max-width:none;height:100%}
+  .screen{
+    display:grid;
+    grid-template-columns:var(--side-w) minmax(0,1fr) var(--side-w);
+    grid-template-rows:1fr;
+    gap:0 20px;
+    padding:14px max(40px,calc(env(safe-area-inset-right,0px) + 20px)) 14px max(40px,calc(env(safe-area-inset-left,0px) + 20px));
+    height:100%;
+    align-items:center;
+  }
+  .head{
+    grid-column:1;
+    grid-row:1;
+    display:flex;
+    flex-direction:column;
+    justify-content:center;
+    gap:12px;
+    min-height:0;
+    max-height:100%;
+    overflow:hidden;
+  }
+  .top{
+    flex:none;
+    display:flex;
+    flex-direction:column;
+    align-items:flex-start;
+    gap:2px;
+  }
+  .state{margin-top:0}
+  .tags{
+    flex:0 1 auto;
+    min-height:0;
+    max-height:100%;
+    display:flex;
+    flex-direction:column;
+    flex-wrap:nowrap;
+    align-items:stretch;
+    gap:6px;
+    margin:0;
+    overflow-y:auto;
+    scrollbar-width:none;
+  }
+  .tags::-webkit-scrollbar{display:none}
+  .chip{
+    display:block;
+    width:100%;
+    min-height:38px;
+    line-height:36px;
+    padding:0 14px;
+    text-align:left;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+  .chip.add{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:0;
+  }
+  .hero{
+    position:static;
+    left:auto;
+    top:auto;
+    transform:none;
+    pointer-events:auto;
+    grid-column:2;
+    grid-row:1;
+    display:grid;
+    place-items:center;
+    min-height:0;
+    height:100%;
+    width:100%;
+  }
+  .stage{--size:min(264px,calc((100vh - 40px) / 1.33))}   /* first guess; fit() below sets the exact size */
+  .controls{
+    grid-column:3;
+    grid-row:1;
+    display:flex;
+    flex-direction:column;
+    justify-content:center;
+    align-items:center;
+    gap:16px;
+    height:100%;
+  }
+  .controls .side{width:116px}
+
+  /* edit sheet becomes two columns so it fits a short screen */
+  .sheet{max-width:640px;margin:0 auto;padding-top:18px;display:grid;grid-template-columns:1fr 1fr;gap:12px 24px;align-items:center}
+  .sheet h2{grid-column:1 / -1}
+  .nameinput{grid-column:1;grid-row:2}
+  .stepper{grid-column:1;grid-row:3}
+  .presets{grid-column:2;grid-row:2;flex-wrap:wrap}
+  .presets button{flex:1 1 28%;min-height:44px}
+  .done-btn{grid-column:2;grid-row:3}
+  .danger{grid-column:1 / -1;grid-row:4}
+  .round{width:52px;height:52px}
+  .goalval{font-size:40px}
+}
+
+@media (prefers-reduced-motion: reduce){
+  .stage,.head,.top,.tags,.controls,.label,.sub,.dots span{transition:none}
+}
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4.5v15l12-7.5z" fill="currentColor"/></symbol>
+    <symbol id="i-reset" viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2.6-5.9"/><path d="M4 4v4.5h4.5"/></symbol>
+    <symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16z"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
+  </defs>
+</svg>
+
+<div class="app">
+  <main class="screen" id="screen">
+    <div class="head">
+      <header class="top">
+        <div>
+          <span class="date"><span id="dateTxt">Today</span><span class="dtime" id="dtime"></span></span>
+          <span class="state" id="state">Ready</span>
+        </div>
+      </header>
+      <nav class="tags" id="tags" aria-label="Tags"></nav>
+    </div>
+
+    <section class="hero" aria-label="Time left today">
+      <div class="stage">
+        <div class="dots" id="dots" aria-hidden="true"></div>
+        <svg class="dial" id="dial" viewBox="-200 -200 400 400" aria-hidden="true" focusable="false"></svg>
+        <div class="readout">
+          <div class="label" id="label">Study</div>
+          <div class="time" id="time">03:00</div>
+          <div class="sub">of <span id="goalTxt">3h</span></div>
+        </div>
+      </div>
+    </section>
+
+    <footer class="controls" id="controls">
+      <button type="button" class="side" id="reset"><svg class="i" aria-hidden="true"><use href="#i-reset"/></svg>Reset</button>
+      <button type="button" class="main" id="main" aria-label="Start timer"><svg class="i" aria-hidden="true"><use href="#i-play"/></svg></button>
+      <button type="button" class="side" id="editbtn"><svg class="i" aria-hidden="true"><use href="#i-edit"/></svg>Edit</button>
+    </footer>
+  </main>
+
+  <div class="overlay" id="overlay" hidden>
+    <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
+      <h2 id="sheetTitle">Tag and goal</h2>
+      <input class="nameinput" id="nameInput" type="text" maxlength="16" placeholder="Tag name" aria-label="Tag name" autocomplete="off">
+      <div class="stepper">
+        <button type="button" class="round" id="minus" aria-label="Shorter goal"><svg class="i" aria-hidden="true"><use href="#i-minus"/></svg></button>
+        <div class="goalval" id="goalval" aria-live="polite">03:00</div>
+        <button type="button" class="round" id="plus" aria-label="Longer goal"><svg class="i" aria-hidden="true"><use href="#i-plus"/></svg></button>
+      </div>
+      <div class="presets" id="presets">
+        <button type="button" data-m="15">15m</button>
+        <button type="button" data-m="30">30m</button>
+        <button type="button" data-m="60">1h</button>
+        <button type="button" data-m="120">2h</button>
+        <button type="button" data-m="180">3h</button>
+        <button type="button" data-m="240">4h</button>
+      </div>
+      <button type="button" class="done-btn" id="doneBtn">Done</button>
+      <button type="button" class="danger" id="deleteBtn" hidden>Delete tag</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  var KEY = 'studyTimer.tags.v1';
+  var OLD_KEY = 'studyTimer.today.v1';          // earlier single-goal version, migrated once
+  var MINUTE = 60000, HOUR = 3600000;
+  var MIN = 5*MINUTE, MAX = 12*HOUR, DOTS = 60;
+  var $ = function(id){ return document.getElementById(id); };
+  var screen = $('screen');
+
+  function pad(n){ return String(n).padStart(2,'0'); }
+  function clock(ms){ var m = Math.ceil(ms/MINUTE); return pad(Math.floor(m/60))+':'+pad(m%60); }
+  function goalLabel(ms){ var m = Math.round(ms/MINUTE), h = Math.floor(m/60), r = m%60; return h ? h+'h'+(r ? ' '+pad(r)+'m' : '') : r+'m'; }
+  function newId(){ return 't'+Date.now().toString(36)+Math.floor(Math.random()*1296).toString(36); }
+
+  /* ---------- data ----------
+     { active: 'id', tags: { id: { name, goal, done } } }   (goal/done in ms)
+     Nothing resets by itself: progress stays until you press Reset. */
+  function defaults(){
+    var data = { active: 'study', tags: {
+      study:    { name: 'Study',    goal: 3*HOUR,    done: 0 },
+      exercise: { name: 'Exercise', goal: 30*MINUTE, done: 0 }
+    }};
+    try {
+      var old = JSON.parse(localStorage.getItem(OLD_KEY));
+      if (old && isFinite(old.goal) && isFinite(old.done)){
+        data.tags.study.goal = Math.max(MIN, Math.min(MAX, old.goal));
+        data.tags.study.done = Math.max(0, Math.min(data.tags.study.goal, old.done));
+      }
+    } catch(e){}
+    return data;
+  }
+  function clean(d){
+    if (!d || typeof d.tags !== 'object' || !d.tags) return null;
+    var out = { active: d.active, tags: {} };
+    Object.keys(d.tags).forEach(function(id){
+      var t = d.tags[id];
+      if (!t || !isFinite(t.goal) || !isFinite(t.done)) return;
+      var goal = Math.max(MIN, Math.min(MAX, t.goal));
+      out.tags[id] = { name: String(t.name || 'Tag').slice(0,16), goal: goal, done: Math.max(0, Math.min(goal, t.done)) };
+    });
+    var ids = Object.keys(out.tags);
+    if (!ids.length) return null;
+    if (!out.tags[out.active]) out.active = ids[0];
+    return out;
+  }
+  var data;
+  try { data = clean(JSON.parse(localStorage.getItem(KEY))); } catch(e){ data = null; }
+  if (!data) data = defaults();
+
+  function save(){ try { localStorage.setItem(KEY, JSON.stringify(data)); } catch(e){} }
+  function cur(){ return data.tags[data.active]; }
+
+  var running = false, timer = null, last = 0, lastSave = 0, wake = null;
+
+  /* ---------- date in the header (display only) ---------- */
+  function setDate(){
+    try { $('dateTxt').textContent = new Date().toLocaleDateString(undefined,{weekday:'short',day:'numeric',month:'short'}); } catch(e){}
+  }
+
+  /* ---------- hour dial + current time ----------
+     12h dial: ticks every hour, 12/3/6/9 labelled, one hand at the current time. */
+  var SVGNS = 'http://www.w3.org/2000/svg', dial = $('dial'), hand = null;
+  function svgEl(name, attrs){
+    var e = document.createElementNS(SVGNS, name);
+    Object.keys(attrs).forEach(function(k){ e.setAttribute(k, attrs[k]); });
+    return e;
+  }
+  function polar(r, deg){ var a = deg*Math.PI/180; return [r*Math.sin(a), -r*Math.cos(a)]; }
+  (function buildDial(){
+    for (var k=0;k<12;k++){
+      var major = k%3 === 0, a = polar(major ? 136 : 140, k*30), b = polar(major ? 150 : 147, k*30);
+      dial.appendChild(svgEl('line', { 'class': 'tick'+(major ? ' maj' : ''), x1:a[0].toFixed(1), y1:a[1].toFixed(1), x2:b[0].toFixed(1), y2:b[1].toFixed(1) }));
+    }
+    [['12',0],['3',90],['6',180],['9',270]].forEach(function(n){
+      var p = polar(168, n[1]), t = svgEl('text', { x:p[0].toFixed(1), y:p[1].toFixed(1) });
+      t.textContent = n[0]; dial.appendChild(t);
+    });
+    hand = svgEl('g', { transform:'rotate(0)' });
+    hand.appendChild(svgEl('line', { 'class':'hand', x1:0, y1:-130, x2:0, y2:-156 }));
+    dial.appendChild(hand);
+  })();
+
+  var lastMin = -1;
+  function updateNow(){
+    var d = new Date(), h = d.getHours(), m = d.getMinutes();
+    if (h*60+m === lastMin) return;
+    lastMin = h*60+m;
+    var txt = pad(h)+':'+pad(m);
+    $('dtime').textContent = txt;
+    hand.setAttribute('transform', 'rotate('+(((h%12)+m/60)*30)+')');
+    setDate();
+  }
+  setInterval(updateNow, 1000);
+
+  /* ---------- dots ---------- */
+  var dots = $('dots');
+  for (var i=0;i<DOTS;i++){
+    var s = document.createElement('span');
+    s.style.transform = 'rotate('+(i*(360/DOTS))+'deg) translateY(calc(var(--r) * -1))';
+    dots.appendChild(s);
+  }
+
+  /* ---------- tag chips ---------- */
+  var tagsNav = $('tags'), chipEls = {};
+  function renderChips(){
+    tagsNav.innerHTML = ''; chipEls = {};
+    Object.keys(data.tags).forEach(function(id){
+      var b = document.createElement('button');
+      b.type = 'button'; b.className = 'chip'; b.setAttribute('data-id', id);
+      b.textContent = data.tags[id].name;
+      chipEls[id] = b; tagsNav.appendChild(b);
+    });
+    var add = document.createElement('button');
+    add.type = 'button'; add.className = 'chip add'; add.setAttribute('aria-label','Add tag');
+    add.innerHTML = '<svg class="i" aria-hidden="true"><use href="#i-plus"/></svg>';
+    tagsNav.appendChild(add);
+    fit();
+  }
+  tagsNav.addEventListener('click', function(e){
+    var b = e.target.closest('button');
+    if (!b || running) return;
+    if (b.classList.contains('add')){ addTag(); return; }
+    data.active = b.getAttribute('data-id');
+    save(); render();
+  });
+
+  /* ---------- render ---------- */
+  function render(){
+    var t = cur(), left = Math.max(0, t.goal - t.done);
+    var p = Math.min(1, t.done/t.goal);
+    var lit = left <= 0 ? DOTS : Math.floor(p*DOTS + 1e-9);
+    for (var k=0;k<DOTS;k++) dots.children[k].className = k<lit ? 'on' : (k===lit ? 'cur' : '');
+
+    $('label').textContent = t.name;
+    $('time').textContent = clock(left);
+    $('goalTxt').textContent = goalLabel(t.goal);
+
+    Object.keys(chipEls).forEach(function(id){
+      var tg = data.tags[id];
+      chipEls[id].setAttribute('aria-pressed', id === data.active ? 'true' : 'false');
+      var finished = tg.done >= tg.goal;
+      chipEls[id].classList.toggle('done', finished);
+      chipEls[id].setAttribute('aria-label', tg.name + (finished ? ', goal reached' : ''));
+    });
+
+    var over = left <= 0;
+    var stateEl = $('state');
+    stateEl.textContent = running ? 'Running' : (over ? 'Goal reached' : (t.done > 0 ? 'Paused' : 'Ready'));
+    stateEl.className = 'state' + (over ? ' done' : '');
+    $('main').disabled = over;
+    $('main').setAttribute('aria-label', running ? 'Pause timer' : (t.done > 0 ? 'Resume timer' : 'Start timer'));
+    screen.classList.toggle('running', running);
+    $('reset').disabled = running;
+    $('editbtn').disabled = running;
+  }
+
+  /* ---------- keep screen on ---------- */
+  function keepAwake(on){
+    try {
+      if (on){
+        if (!navigator.wakeLock || (wake && !wake.released)) return;
+        navigator.wakeLock.request('screen').then(function(l){ wake = l; }).catch(function(){});
+      } else if (wake){
+        wake.release(); wake = null;
+      }
+    } catch(e){}
+  }
+
+  /* ---------- timer ---------- */
+  function start(){
+    var t = cur();
+    if (running || t.done >= t.goal) return;
+    running = true; last = Date.now(); lastSave = last;
+    timer = setInterval(tick, 250);
+    keepAwake(true);
+    render();
+  }
+  function pause(noRender){
+    if (!running) return;
+    running = false; clearInterval(timer); timer = null;
+    keepAwake(false);
+    save();
+    if (!noRender) render();
+  }
+  function tick(){
+    var now = Date.now();
+    var t = cur();
+    t.done = Math.min(t.goal, t.done + (now - last));
+    last = now;
+    if (t.done >= t.goal){ pause(); return; }
+    if (now - lastSave > 1000){ save(); lastSave = now; }
+    render();
+  }
+
+  $('main').addEventListener('click', function(){ running ? pause() : start(); });
+  screen.addEventListener('click', function(e){
+    if (running && !e.target.closest('button')) pause();
+  });
+  $('reset').addEventListener('click', function(){ cur().done = 0; save(); render(); });
+
+  /* ---------- edit sheet ---------- */
+  var overlay = $('overlay'), nameInput = $('nameInput'), delBtn = $('deleteBtn');
+  var delArmed = false, delTimer = null;
+
+  function disarmDelete(){ delArmed = false; clearTimeout(delTimer); delBtn.textContent = 'Delete tag'; }
+  function renderSheet(){
+    var t = cur();
+    $('goalval').textContent = clock(t.goal);
+    Array.prototype.forEach.call($('presets').children, function(b){
+      b.setAttribute('aria-pressed', Number(b.getAttribute('data-m'))*MINUTE === t.goal ? 'true' : 'false');
+    });
+  }
+  function openSheet(focusName){
+    nameInput.value = cur().name;
+    delBtn.hidden = Object.keys(data.tags).length < 2;
+    disarmDelete();
+    renderSheet();
+    overlay.hidden = false;
+    if (focusName){ nameInput.focus(); nameInput.select(); } else { $('doneBtn').focus(); }
+  }
+  function closeSheet(){
+    var t = cur();
+    t.name = nameInput.value.trim().slice(0,16) || 'Tag';
+    if (chipEls[data.active]) chipEls[data.active].textContent = t.name;
+    save(); render();
+    overlay.hidden = true;
+    $('editbtn').focus();
+  }
+  function setGoal(g){
+    var t = cur();
+    t.goal = Math.max(MIN, Math.min(MAX, g));
+    t.done = Math.min(t.done, t.goal);
+    save(); render(); renderSheet();
+  }
+  function addTag(){
+    var id = newId();
+    data.tags[id] = { name: 'New tag', goal: HOUR, done: 0 };
+    data.active = id;
+    save(); renderChips(); render();
+    openSheet(true);
+  }
+
+  $('editbtn').addEventListener('click', function(){ openSheet(false); });
+  $('doneBtn').addEventListener('click', closeSheet);
+  overlay.addEventListener('click', function(e){ if (e.target === overlay) closeSheet(); });
+  overlay.addEventListener('keydown', function(e){ if (e.key === 'Escape') closeSheet(); });
+  nameInput.addEventListener('input', function(){
+    var t = cur(); t.name = nameInput.value.slice(0,16);
+    if (chipEls[data.active]) chipEls[data.active].textContent = t.name.trim() || 'Tag';
+    $('label').textContent = t.name.trim() || 'Tag';
+  });
+  nameInput.addEventListener('keydown', function(e){ if (e.key === 'Enter'){ e.preventDefault(); closeSheet(); } });
+
+  // 5 minute steps up to an hour, 15 minute steps above it
+  $('minus').addEventListener('click', function(){ var g = cur().goal; setGoal(g - (g <= 60*MINUTE ? 5 : 15)*MINUTE); });
+  $('plus').addEventListener('click', function(){ var g = cur().goal; setGoal(g + (g < 60*MINUTE ? 5 : 15)*MINUTE); });
+  $('presets').addEventListener('click', function(e){
+    var b = e.target.closest('button'); if (b) setGoal(Number(b.getAttribute('data-m'))*MINUTE);
+  });
+
+  delBtn.addEventListener('click', function(){
+    if (!delArmed){
+      delArmed = true; delBtn.textContent = 'Tap again to delete';
+      delTimer = setTimeout(disarmDelete, 3000);
+      return;
+    }
+    delete data.tags[data.active];
+    data.active = Object.keys(data.tags)[0];
+    disarmDelete();
+    save(); renderChips(); render();
+    overlay.hidden = true;
+    $('editbtn').focus();
+  });
+
+  /* ---------- lifecycle ---------- */
+  document.addEventListener('visibilitychange', function(){
+    if (document.hidden){ save(); return; }
+    lastMin = -1; updateNow();
+    if (running) keepAwake(true);   // the browser drops the wake lock while hidden
+  });
+  window.addEventListener('pagehide', save);
+
+  /* ---------- ring size ----------
+     Measure the space the hero area really has and give the ring that size in px.
+     Everything inside the ring (time, label, dots) scales from this one value. */
+  var hero = document.querySelector('.hero'), stage = document.querySelector('.stage');
+  function fit(){
+    var isLandscape = window.matchMedia('(orientation: landscape)').matches;
+    var w, h;
+    if (isLandscape){
+      w = hero.clientWidth;
+      h = hero.clientHeight;
+    } else {
+      var head = document.querySelector('.head');
+      var controls = document.querySelector('.controls');
+      var headH = head ? head.offsetHeight : 0;
+      var ctrlH = controls ? controls.offsetHeight : 0;
+      w = screen.clientWidth;
+      // In portrait, the timer is centered at 50% of the screen.
+      // Available height without overlapping head or controls is 2 * min clearance.
+      var padH = 16;
+      var spaceTop = screen.clientHeight / 2 - headH - padH;
+      var spaceBottom = screen.clientHeight / 2 - ctrlH - padH;
+      var availH = Math.max(120, Math.min(spaceTop, spaceBottom) * 2);
+      h = availH;
+    }
+    if (!w || !h) return;
+    var DIAL = 1.33;   // outer dial diameter / ring size
+    var size = Math.max(100, Math.min(264, (Math.min(w, h) - 14) / DIAL));
+    stage.style.setProperty('--size', size + 'px');
+  }
+  if (window.ResizeObserver){
+    new ResizeObserver(fit).observe(screen);
+  }
+  window.addEventListener('resize', fit);
+  window.addEventListener('orientationchange', function(){ setTimeout(fit, 150); });
+
+  /* ---------- go ---------- */
+  fit();
+  updateNow();
+  renderChips();
+  render();
+  save();
+})();
+</script>
+<script>
+// register the service worker so the app works offline (needs HTTPS)
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function(){
+    navigator.serviceWorker.register('sw.js').then(function(reg){
+      reg.update();
+    }).catch(function(){});
+  });
+  navigator.serviceWorker.addEventListener('controllerchange', function(){
+    window.location.reload();
+  });
+}
+</script>
+</body>
+</html>
